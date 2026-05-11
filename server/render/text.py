@@ -55,7 +55,7 @@ def render_quote(text: str, dst_path: str | Path) -> Path:
             draw = ImageDraw.Draw(img)
             x = canvas_w // 2
             y = (canvas_h - total_height) // 2
-            draw.multiline_text((x, y), rendered, font=font, fill=0, align="center")
+            draw.multiline_text((x, y), rendered, font=font, fill=0, align="center", anchor="ma")
             return save_dithered(img, dst_path)
 
     # Fallback: smallest size, render anyway.
@@ -68,5 +68,5 @@ def render_quote(text: str, dst_path: str | Path) -> Path:
     total_height = bbox[3] - bbox[1]
     x = canvas_w // 2
     y = (canvas_h - total_height) // 2
-    draw.multiline_text((x, y), rendered, font=font, fill=0, align="center")
+    draw.multiline_text((x, y), rendered, font=font, fill=0, align="center", anchor="ma")
     return save_dithered(img, dst_path)
