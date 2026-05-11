@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>render compare</title>
+<style>
+  body{font-family:system-ui;margin:20px;background:#222;color:#eee}
+  .row{display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap}
+  figure{margin:0}
+  figcaption{font-size:14px;margin-bottom:6px;opacity:.8}
+  img{background:#fff;max-height:80vh;border:1px solid #444}
+  .src{max-width:600px}
+</style>
+<h2>Source → Kindle render</h2>
+<div class="row">
+  <figure>
+    <figcaption>photo.png (source)</figcaption>
+    <img class="src" src="../photo.png">
+  </figure>
+  <figure>
+    <figcaption>/current.png served by Flask (600×800, 1-bit, FS dither)</figcaption>
+    <img src="http://127.0.0.1:5050/current.png?t=__T__">
+  </figure>
+</div>
+<script>
+  // cache-bust the server image each load
+  document.querySelectorAll('img').forEach(i => {
+    if (i.src.includes('__T__')) i.src = i.src.replace('__T__', Date.now());
+  });
+</script>

@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.env
+
+# rendered/uploaded tiles — keep dir, not contents
+server/tiles/*
+!server/tiles/.gitkeep
+
+preview.png
+*.egg-info/
+.DS_Store
+
+# local agent/editor state
+.claude/
