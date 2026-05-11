@@ -9,6 +9,8 @@ from flask import Flask, abort, jsonify, redirect, render_template, request, sen
 
 from render.image import render_photo
 from render.text import render_quote
+from render.unsplash import fetch_photo
+from render.smart_bg import render_quote_on_background
 
 SERVER_DIR = Path(__file__).resolve().parent
 # TILES_DIR is configurable so Railway can point it at a persistent volume.
@@ -141,7 +143,16 @@ def draft(token: str):
         f.save(src)
         render_photo(src, DRAFT_PATH)
     elif text:
-        render_quote(text, DRAFT_PATH)
+        smart_bg = request.form.get("smart_bg") == "on"
+        if smart_bg:
+            bg = fetch_photo(text)
+            if bg:
+                render_quote_on_background(text, bg, DRAFT_PATH)
+            else:
+                # Unsplash missing key / no results — fall back to plain text.
+                render_quote(text, DRAFT_PATH)
+        else:
+            render_quote(text, DRAFT_PATH)
         # Save source for later inspection.
         for old in TILES_DIR.glob("current_source.*"):
             old.unlink()
