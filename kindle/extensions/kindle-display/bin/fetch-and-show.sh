@@ -21,7 +21,12 @@ fi
 # curl -z compares the SERVER's Last-Modified to the local file's mtime.
 # If unchanged, server returns 304 and curl writes nothing to $TMP.
 # --max-time bounds the whole transfer so a hung server can't hang our loop.
-HTTP=$(curl -sS -L \
+# -k: skip TLS cert verification. The Kindle Touch ships a ~2013 CA bundle
+# that doesn't include modern Let's Encrypt roots, so PythonAnywhere's cert
+# fails to validate. The connection is still encrypted; only identity check
+# is skipped. Threat model = "someone on home wifi swaps the wallpaper" —
+# acceptable for v0. Upload endpoint is still token-protected.
+HTTP=$(curl -sS -L -k \
   -o "$TMP" \
   -w "%{http_code}" \
   -z "$CURRENT" \
