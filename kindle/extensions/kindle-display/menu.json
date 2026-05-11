@@ -1,0 +1,24 @@
+{
+    "items": [
+        {
+            "name": "Refresh now",
+            "priority": 1,
+            "action": "bin/fetch-and-show.sh"
+        },
+        {
+            "name": "Start hourly loop",
+            "priority": 2,
+            "action": "bin/loop-start.sh"
+        },
+        {
+            "name": "Stop hourly loop",
+            "priority": 3,
+            "action": "bin/loop-stop.sh"
+        },
+        {
+            "name": "Show log on screen",
+            "priority": 4,
+            "action": "bin/show-log.sh"
+        }
+    ]
+}
