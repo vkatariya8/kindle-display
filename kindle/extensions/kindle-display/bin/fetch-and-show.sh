@@ -49,10 +49,19 @@ publish_screensaver() {
     cp "$CURRENT" "$SS_DIR/$f" 2>>"$LOG_FILE"
   done
   log fetch "screensavers updated"
-  # Tell powerd to enter screensaver mode. If we're already in it, this is
-  # effectively a repaint. Framework is not stopped, so power button still
-  # wakes the device normally.
-  lipc-set-prop com.lab126.powerd toScreenSaver 2>>"$LOG_FILE"
+  # Sleep the device. powerButton 1 simulates a physical power-button press,
+  # which is the reliable way to enter screensaver mode on Touch 5.3.x.
+  # (lipc com.lab126.powerd.toScreenSaver was a no-op on this firmware.)
+  # If the device is already asleep, this would WAKE it — that's why we only
+  # call it when we have a fresh image worth showing.
+  awake=$(lipc-get-prop com.lab126.powerd state 2>/dev/null)
+  log fetch "powerd.state=$awake before sleep trigger"
+  if [ "$awake" = "active" ]; then
+    lipc-set-prop com.lab126.powerd powerButton 1 2>>"$LOG_FILE"
+    log fetch "powerButton 1 sent (sleep)"
+  else
+    log fetch "device not active, skipping sleep trigger"
+  fi
 }
 
 case "$HTTP" in

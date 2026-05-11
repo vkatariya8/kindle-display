@@ -18,7 +18,10 @@ fi
 FETCH="$HERE/fetch-and-show.sh"
 INTERVAL="$REFRESH_SECONDS"
 
-nohup sh -c "
+# BusyBox sh doesn't ship nohup, but the trailing `&` plus stdin/out/err
+# redirection is enough — the child won't get SIGHUP'd by KUAL's exit
+# because KUAL launches scripts as detached children already.
+sh -c "
   while true; do
     '$FETCH'
     sleep $INTERVAL
