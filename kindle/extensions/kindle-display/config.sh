@@ -1,5 +1,5 @@
 # Sourced by every script. POSIX sh; no bashisms.
-# EDIT THIS FILE ONCE on your laptop before copying to the Kindle.
+# EDIT THIS FILE ONCE on yo  ur laptop before copying to the Kindle.
 
 SERVER_URL="https://vkatariya8.pythonanywhere.com"
 
