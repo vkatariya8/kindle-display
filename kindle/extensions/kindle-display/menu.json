@@ -5,26 +5,32 @@
             "priority": 0,
             "items": [
                 {
-                    "name": "Refresh now",
+                    "name": "Enter display mode (stops UI)",
                     "priority": 1,
+                    "action": "./bin/display-mode-on.sh",
+                    "status": false
+                },
+                {
+                    "name": "Refresh now",
+                    "priority": 2,
                     "action": "./bin/fetch-and-show.sh",
                     "status": false
                 },
                 {
                     "name": "Start hourly loop",
-                    "priority": 2,
+                    "priority": 3,
                     "action": "./bin/loop-start.sh",
                     "status": false
                 },
                 {
                     "name": "Stop hourly loop",
-                    "priority": 3,
+                    "priority": 4,
                     "action": "./bin/loop-stop.sh",
                     "status": false
                 },
                 {
                     "name": "Show log on screen",
-                    "priority": 4,
+                    "priority": 5,
                     "action": "./bin/show-log.sh",
                     "status": false
                 }
