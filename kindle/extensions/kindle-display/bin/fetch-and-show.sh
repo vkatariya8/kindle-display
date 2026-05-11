@@ -36,21 +36,40 @@ HTTP=$(curl -sS -L -k \
 
 log fetch "GET -> $HTTP"
 
+# publish_screensaver: copy $CURRENT into linkss's screensaver folder,
+# overwriting BOTH default slots so the hack's random picker always lands
+# on our image. Then nudge the device into screensaver mode so it repaints.
+publish_screensaver() {
+  if [ ! -d "$SS_DIR" ]; then
+    log fetch "screensaver dir $SS_DIR missing, falling back to eips"
+    eips -g "$CURRENT" >>"$LOG_FILE" 2>&1
+    return
+  fi
+  for f in $SS_FILES; do
+    cp "$CURRENT" "$SS_DIR/$f" 2>>"$LOG_FILE"
+  done
+  log fetch "screensavers updated"
+  # Tell powerd to enter screensaver mode. If we're already in it, this is
+  # effectively a repaint. Framework is not stopped, so power button still
+  # wakes the device normally.
+  lipc-set-prop com.lab126.powerd toScreenSaver 2>>"$LOG_FILE"
+}
+
 case "$HTTP" in
   200)
     # New image. Atomic replace so a half-downloaded file can never display.
     mv "$TMP" "$CURRENT"
     BYTES=$(wc -c < "$CURRENT" | tr -d ' ')
     log fetch "new image, $BYTES bytes"
-    eips -g "$CURRENT" >>"$LOG_FILE" 2>&1
+    publish_screensaver
     ;;
   304)
-    # Nothing new server-side. Re-render anyway because the Kindle framework
-    # likes to repaint the screen (clock, status bar) over our image.
+    # Same image server-side. Re-publish anyway in case the user woke the
+    # device and we want to send it back to the screensaver.
     rm -f "$TMP"
     if [ -f "$CURRENT" ]; then
-      log fetch "304, redrawing cached"
-      eips -g "$CURRENT" >>"$LOG_FILE" 2>&1
+      log fetch "304, re-publishing cached"
+      publish_screensaver
     else
       log fetch "304 but no cached file (shouldn't happen)"
     fi

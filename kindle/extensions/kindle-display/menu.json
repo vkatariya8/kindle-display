@@ -5,7 +5,7 @@
             "priority": 0,
             "items": [
                 {
-                    "name": "Enter display mode (stops UI)",
+                    "name": "Start wall display",
                     "priority": 1,
                     "action": "./bin/display-mode-on.sh",
                     "status": false

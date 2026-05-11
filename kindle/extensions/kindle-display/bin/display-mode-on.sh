@@ -1,30 +1,18 @@
 #!/bin/sh
-# Enter dedicated wall-display mode:
-#   1. Stop the Kindle framework (lab126_gui) so it stops repainting the UI
-#      over our image.
-#   2. Run one fetch immediately so the wall has something to show.
-#   3. Start the hourly background loop.
+# Start wall-display mode using NiLuJe's linkss screensaver hack:
+#   1. Fetch and publish the current tile as the screensaver.
+#   2. Start the hourly background loop (it re-publishes every $REFRESH_SECONDS).
 #
-# RECOVERY: hold the power button ~20 seconds to force-reboot. The framework
-# starts back up on boot and KUAL works again. The hourly loop does NOT
-# auto-resume — tap this entry again from KUAL to re-enter display mode.
+# Framework stays running — touch the power button to wake the Kindle back to
+# normal use. Hourly loop does NOT survive reboot; re-tap this after power
+# cycles.
 
 HERE="$(dirname "$0")"
 . "$HERE/_common.sh"
 
-log mode "ENTER display mode"
+log mode "start wall display"
 
-# stop lab126_gui is upstart-based on Touch 5.x. Suppress errors so a
-# missing/renamed service on a different firmware doesn't bail us out.
-stop lab126_gui >>"$LOG_FILE" 2>&1 || log mode "stop lab126_gui returned non-zero (continuing)"
-
-# Give the framework a moment to release the framebuffer before we paint.
-sleep 2
-
-# One immediate fetch+display so the wall isn't blank.
 "$HERE/fetch-and-show.sh"
-
-# Then start the background loop.
 "$HERE/loop-start.sh"
 
-log mode "display mode active"
+log mode "wall display active"
