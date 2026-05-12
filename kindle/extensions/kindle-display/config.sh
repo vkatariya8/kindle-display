@@ -14,8 +14,8 @@ LOG_FILE="/mnt/us/kindle-display.log"
 SS_DIR="/mnt/us/linkss/screensavers"
 SS_FILES="bg_xsmall_ss00.png bg_xsmall_ss01.png"
 
-# How often the background loop fetches. 3600 = 1 hour.
-REFRESH_SECONDS=3600
+# How often the background loop fetches. 3600 = 1 hour, 1800 = 30 min, 120 = 2 min.
+REFRESH_SECONDS=1800
 
 # How long to wait for Wi-Fi to associate before giving up.
 WIFI_TIMEOUT_SECONDS=30

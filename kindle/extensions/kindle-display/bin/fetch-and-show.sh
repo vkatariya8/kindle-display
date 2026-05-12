@@ -1,5 +1,5 @@
 #!/bin/sh
-# The loop body. One shot: wifi on -> conditional GET -> eips -> wifi off.
+# The loop body. One shot: wifi on -> conditional GET -> /usr/sbin/eips -> wifi off.
 # Safe to run as often as you like; uses If-Modified-Since to avoid re-downloads.
 
 HERE="$(dirname "$0")"
@@ -14,7 +14,7 @@ log fetch "begin"
 # showing the last good image rather than going blank.
 if ! "$HERE/wifi-on.sh"; then
   log fetch "no wifi; redisplaying cached"
-  [ -f "$CURRENT" ] && eips -g "$CURRENT" >>"$LOG_FILE" 2>&1
+  [ -f "$CURRENT" ] && /usr/sbin/eips -g "$CURRENT" >>"$LOG_FILE" 2>&1
   exit 1
 fi
 
@@ -36,31 +36,60 @@ HTTP=$(curl -sS -L -k \
 
 log fetch "GET -> $HTTP"
 
+# RTC wake is now handled by the persistent wake-listener daemon spawned by
+# loop-start.sh (see wake-listener.sh). That daemon listens for powerd's
+# readyToSuspend event and arms rtcWakeup whenever it fires. Doing it per-
+# fetch was racy: the listener might miss the event, and we'd accumulate
+# short-lived listener processes.
+#
+# Here we just attempt a direct rtcWakeup write as a best-effort early arm
+# (works only when powerd is already in ReadyToSuspend, which is rare from
+# inside a fetch but harmless to try).
+
 # publish_screensaver: copy $CURRENT into linkss's screensaver folder,
 # overwriting BOTH default slots so the hack's random picker always lands
 # on our image. Then nudge the device into screensaver mode so it repaints.
 publish_screensaver() {
   if [ ! -d "$SS_DIR" ]; then
     log fetch "screensaver dir $SS_DIR missing, falling back to eips"
-    eips -g "$CURRENT" >>"$LOG_FILE" 2>&1
+    /usr/sbin/eips -g "$CURRENT" >>"$LOG_FILE" 2>&1
     return
   fi
   for f in $SS_FILES; do
     cp "$CURRENT" "$SS_DIR/$f" 2>>"$LOG_FILE"
   done
   log fetch "screensavers updated"
+
+  # If the device is already in screensaver mode, the linkss hack won't
+  # repaint just because we swapped the PNG underneath it (it picks an
+  # image only on entry into screensaver). Force an immediate repaint via
+  # eips. Safe in screenSaver/readyToSuspend states; we skip it when active
+  # so we don't fight the framework UI.
+  state_now=$(lipc-get-prop com.lab126.powerd state 2>/dev/null)
+  case "$state_now" in
+    screenSaver|readyToSuspend)
+      /usr/sbin/eips -f -g "$CURRENT" >>"$LOG_FILE" 2>&1
+      log fetch "eips repaint (state=$state_now)"
+      ;;
+  esac
   # Sleep the device. powerButton 1 simulates a physical power-button press,
   # which is the reliable way to enter screensaver mode on Touch 5.3.x.
   # (lipc com.lab126.powerd.toScreenSaver was a no-op on this firmware.)
   # If the device is already asleep, this would WAKE it — that's why we only
   # call it when we have a fresh image worth showing.
   awake=$(lipc-get-prop com.lab126.powerd state 2>/dev/null)
-  log fetch "powerd.state=$awake before sleep trigger"
+  log fetch "powerd.state=$awake"
+
+  # Best-effort early arm. The persistent wake-listener will catch any
+  # readyToSuspend event afterwards regardless.
+  lipc-set-prop -i com.lab126.powerd rtcWakeup "$REFRESH_SECONDS" 2>/dev/null \
+    && log fetch "rtcWakeup armed for +${REFRESH_SECONDS}s (direct)"
+
+  # powerButton 1 is a TOGGLE — it sleeps an active device, but wakes a
+  # sleeping one. Only press it when the device is fully active.
   if [ "$awake" = "active" ]; then
     lipc-set-prop com.lab126.powerd powerButton 1 2>>"$LOG_FILE"
     log fetch "powerButton 1 sent (sleep)"
-  else
-    log fetch "device not active, skipping sleep trigger"
   fi
 }
 
