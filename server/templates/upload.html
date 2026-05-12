@@ -62,11 +62,34 @@
       border-radius: 4px;
       margin-bottom: 1rem;
     }
+    .current {
+      text-align: center;
+      margin-bottom: 1rem;
+    }
+    .current img {
+      max-width: 300px;
+      width: 100%;
+      height: auto;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    .current-label {
+      font-size: 0.875rem;
+      color: #666;
+      margin-bottom: 0.5rem;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>Kindle wall display</h1>
+
+    {% if current_exists %}
+    <div class="card current">
+      <div class="current-label">Currently on Kindle</div>
+      <img src="/current.png?t={{ current_mtime }}" alt="Current tile">
+    </div>
+    {% endif %}
 
     {% if published %}
     <div class="success">

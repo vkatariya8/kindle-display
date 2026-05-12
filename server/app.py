@@ -118,7 +118,15 @@ def upload_form(token: str):
     if not _token_ok(token):
         abort(404)
     preview_ts = request.args.get("t", "")
-    return render_template("upload.html", token=token, preview_ts=preview_ts)
+    current_exists = RENDERED_PATH.exists()
+    current_mtime = int(RENDERED_PATH.stat().st_mtime) if current_exists else 0
+    return render_template(
+        "upload.html",
+        token=token,
+        preview_ts=preview_ts,
+        current_exists=current_exists,
+        current_mtime=current_mtime,
+    )
 
 
 @app.post("/u/<token>/draft")
@@ -185,7 +193,15 @@ def publish(token: str):
     DRAFT_PATH.rename(tmp)
     tmp.rename(RENDERED_PATH)
 
-    return render_template("upload.html", token=token, published=True)
+    current_exists = RENDERED_PATH.exists()
+    current_mtime = int(RENDERED_PATH.stat().st_mtime) if current_exists else 0
+    return render_template(
+        "upload.html",
+        token=token,
+        published=True,
+        current_exists=current_exists,
+        current_mtime=current_mtime,
+    )
 
 
 if __name__ == "__main__":
