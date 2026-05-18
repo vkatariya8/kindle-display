@@ -7,8 +7,36 @@ HERE="$(dirname "$0")"
 
 CURRENT="$TILE_DIR/current.png"
 TMP="$TILE_DIR/.current.png.tmp"
+LOWBATT_STOP="$TILE_DIR/lowbatt_stop"
 
 log fetch "begin"
+
+# Check battery before doing anything expensive.
+BATT=$(lipc-get-prop com.lab126.powerd battLevel 2>/dev/null || echo 100)
+log fetch "battery=$BATT%"
+if [ "$BATT" -le "$LOWBATT_THRESHOLD" ]; then
+  log fetch "battery <= ${LOWBATT_THRESHOLD}%, entering low-battery mode"
+  if "$HERE/wifi-on.sh"; then
+    LOWBATT_IMG="$TILE_DIR/lowbatt.png"
+    HTTP_LB=$(curl -sS -L -k \
+      -o "$LOWBATT_IMG" \
+      -w "%{http_code}" \
+      --connect-timeout 10 \
+      --max-time 60 \
+      "$SERVER_URL/current-lowbatt.png" 2>>"$LOG_FILE") || HTTP_LB="000"
+    log fetch "lowbatt GET -> $HTTP_LB"
+    "$HERE/wifi-off.sh"
+    if [ "$HTTP_LB" = "200" ] && [ -f "$LOWBATT_IMG" ]; then
+      cp "$LOWBATT_IMG" "$CURRENT"
+      /usr/sbin/eips -f -g "$CURRENT" >>"$LOG_FILE" 2>&1
+    fi
+  else
+    log fetch "no wifi for lowbatt fetch, keeping current image"
+  fi
+  touch "$LOWBATT_STOP"
+  log fetch "lowbatt_stop sentinel created, exiting"
+  exit 0
+fi
 
 # Wi-Fi up. If it fails, redisplay whatever we have and bail — the wall keeps
 # showing the last good image rather than going blank.

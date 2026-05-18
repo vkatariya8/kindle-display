@@ -7,6 +7,8 @@ from pathlib import Path
 
 from flask import Flask, abort, jsonify, redirect, render_template, request, send_file, url_for
 
+from PIL import Image, ImageDraw, ImageFont
+
 from render.image import render_photo
 from render.text import render_quote
 from render.unsplash import fetch_photo
@@ -24,6 +26,10 @@ DRAFT_PATH = TILES_DIR / "draft.png"
 UPLOAD_TOKEN = os.environ.get("UPLOAD_TOKEN")
 
 ALLOWED_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
+
+LOWBATT_PATH = TILES_DIR / "current-lowbatt.png"
+FONT_DIR = SERVER_DIR / "fonts"
+LOWBATT_FONT = FONT_DIR / "EBGaramond-Italic.ttf"
 
 app = Flask(__name__)
 
@@ -98,6 +104,40 @@ def current_png():
         return resp
 
     resp = send_file(RENDERED_PATH, mimetype="image/png", conditional=False)
+    resp.headers["Last-Modified"] = last_modified
+    resp.headers["ETag"] = etag
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
+@app.get("/current-lowbatt.png")
+def current_lowbatt_png():
+    if not RENDERED_PATH.exists():
+        abort(404, "no tile rendered yet")
+
+    # Regenerate if current.png is newer than the cached overlay.
+    current_mtime = RENDERED_PATH.stat().st_mtime
+    if not LOWBATT_PATH.exists() or LOWBATT_PATH.stat().st_mtime < current_mtime:
+        img = Image.open(RENDERED_PATH).convert("L")
+        draw = ImageDraw.Draw(img)
+        font = ImageFont.truetype(str(LOWBATT_FONT), 22)
+        bbox = draw.textbbox((0, 0), "low battery", font=font)
+        th = bbox[3] - bbox[1]
+        draw.text((300, 800 - 24 - th), "low battery", font=font, fill=160, anchor="mt")
+        img.save(LOWBATT_PATH, format="PNG", optimize=True)
+
+    etag = _etag(LOWBATT_PATH)
+    mtime = LOWBATT_PATH.stat().st_mtime
+    last_modified = formatdate(mtime, usegmt=True)
+
+    inm = request.headers.get("If-None-Match")
+    if inm and inm == etag:
+        resp = app.response_class(status=304)
+        resp.headers["Last-Modified"] = last_modified
+        resp.headers["ETag"] = etag
+        return resp
+
+    resp = send_file(LOWBATT_PATH, mimetype="image/png", conditional=False)
     resp.headers["Last-Modified"] = last_modified
     resp.headers["ETag"] = etag
     resp.headers["Cache-Control"] = "no-cache"

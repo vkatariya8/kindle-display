@@ -21,6 +21,9 @@ else
   log loop "no loop running"
 fi
 
+# Clean up low-battery sentinel so a restart works cleanly.
+rm -f "$TILE_DIR/lowbatt_stop"
+
 if [ -f "$WAKE_PIDFILE" ]; then
   WPID=$(cat "$WAKE_PIDFILE")
   if kill -0 "$WPID" 2>/dev/null; then

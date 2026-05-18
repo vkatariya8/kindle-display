@@ -36,9 +36,24 @@ TICK=60
 # BusyBox sh doesn't ship nohup, but the trailing `&` plus stdin/out/err
 # redirection is enough — the child won't get SIGHUP'd by KUAL's exit
 # because KUAL launches scripts as detached children already.
+LOWBATT_STOP="$TILE_DIR/lowbatt_stop"
+
+# Clean up any stale sentinel from a previous low-battery shutdown.
+rm -f "$LOWBATT_STOP"
+
 sh -c "
   while true; do
     '$FETCH'
+    if [ -f '$LOWBATT_STOP' ]; then
+      echo \"\$(date '+%Y-%m-%d %H:%M:%S') [loop] low battery shutdown\" >> '$LOG_FILE'
+      # Kill wake-listener so no more RTC wakeups get armed.
+      if [ -f '$WAKE_PIDFILE' ]; then
+        kill \"\$(cat '$WAKE_PIDFILE')\" 2>/dev/null
+        rm -f '$WAKE_PIDFILE'
+      fi
+      rm -f '$PIDFILE'
+      exit 0
+    fi
     sleep $TICK
   done
 " >>"$LOG_FILE" 2>&1 &

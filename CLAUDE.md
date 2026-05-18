@@ -5,9 +5,15 @@ Context for Claude Code working on this repo. Read this before making changes.
 ## What this project is
 
 A wall-mounted e-ink display built from a jailbroken Kindle Touch. The Kindle
-fetches a pre-rendered PNG from a server once an hour and displays it. The
-server does all the rendering (photos, quotes, dashboards) and serves the
-current tile at a stable URL. See `README.md` for the full architecture.
+fetches a pre-rendered PNG from a server every 30 minutes (configurable) and
+displays it. The server does all the rendering (photos, quotes, dashboards)
+and serves the current tile at a stable URL. See `README.md` for the full
+architecture.
+
+**Current status:** The project is functional end-to-end. Server is deployed on
+PythonAnywhere, the Kindle fetches and displays tiles via the linkss screensaver
+hack with RTC wakeup scheduling, and there's a working web UI for uploading
+photos and text quotes (with optional Unsplash smart backgrounds).
 
 ## The two sides of this codebase have very different constraints
 
@@ -66,13 +72,31 @@ wrong on a jailbroken device can mean a long recovery.
 
 - `GET /current.png` — returns the current rendered tile. Must support
   `If-Modified-Since` (return `304` when unchanged). Must set `Last-Modified`.
-- `POST /upload` — accepts an image file or a text quote. Stores it as the new
-  current tile. Auth: TBD (skip for v0, add HMAC or a shared secret in v1).
+- `POST /upload` — accepts an image file with `X-Upload-Token` header. Stores
+  it as the new current tile.
 - `GET /health` — returns 200 with a tiny JSON body. Used for debugging from
   the Kindle.
 
 The Kindle never parses JSON, never follows redirects it doesn't expect, and
 never processes anything but the raw PNG bytes. Keep the contract minimal.
+
+### Web UI and auth
+
+The web UI lives at `/u/<token>/` where `<token>` is the value of
+`UPLOAD_TOKEN`. Wrong tokens get a 404 (not 401) to hide the endpoint's
+existence. The UI supports a draft/preview workflow: `POST /u/<token>/draft`
+renders a preview, and `POST /u/<token>/publish` atomically promotes it to
+`current.png`. The API endpoint (`POST /upload` with `X-Upload-Token` header)
+still works independently for `curl`-based uploads.
+
+## Environment variables
+
+- `UPLOAD_TOKEN` — shared secret for the `/upload` API and the web UI URL slug.
+  If unset, upload is open (dev only). Set via PA's WSGI config.
+- `UNSPLASH_ACCESS_KEY` — Unsplash API key for the smart background feature.
+  Optional; if unset, smart_bg falls back to plain text rendering.
+- `TILES_DIR` — override path for tile storage. Defaults to `server/tiles/`.
+  Useful when the hosting platform needs a persistent volume mount.
 
 ## Working style
 
@@ -87,13 +111,31 @@ never processes anything but the raw PNG bytes. Keep the contract minimal.
 - **Comments explain *why*, not *what*.** The "why" is often a Kindle quirk or
   a dithering choice that won't be obvious six months later.
 
+## Deployment
+
+Hosted on PythonAnywhere (free tier) at `https://vkatariya8.pythonanywhere.com`.
+Deploy workflow: `git push` locally, then on PA's Bash console run
+`cd ~/kindle-display && git pull && .venv/bin/pip install -r requirements.txt`,
+then hit Reload on the Web tab. Env vars are set in PA's WSGI config file.
+See `docs/deploy.md` for the full runbook and common failure modes.
+
+## Testing
+
+No formal test suite. Testing is manual:
+- Use `tools/preview.py` for local rendering checks (photo tiles).
+- Use `tools/compare.html` to visually diff source vs rendered output.
+- Run server locally: `UPLOAD_TOKEN=dev python server/app.py`
+- Kindle-side: check `/mnt/us/kindle-display.log` via KUAL "Show log on
+  screen" or by mounting the Kindle as a USB drive.
+
 ## Out of scope (for now)
 
-- Authentication beyond a shared secret
 - Multi-user / multi-device support
-- A web UI for the upload endpoint (curl is fine for v0–v1)
+- Tile history or versioning
+- Scheduled / future-dated tile posts
 - ESP32 client (planned for v3, but separate concern)
 - OTA updates to the Kindle script (just SSH and re-run `install.sh`)
+- Formal test suite
 
 ## Useful one-liners
 

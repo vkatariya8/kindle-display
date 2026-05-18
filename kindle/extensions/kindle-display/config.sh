@@ -19,3 +19,6 @@ REFRESH_SECONDS=1800
 
 # How long to wait for Wi-Fi to associate before giving up.
 WIFI_TIMEOUT_SECONDS=30
+
+# Battery percentage at or below which we show a low-battery overlay and stop refreshing.
+LOWBATT_THRESHOLD=15
