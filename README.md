@@ -1,7 +1,9 @@
 # kindle-display
 
 Turning a jailbroken Kindle Touch (2010) into a wall-mounted e-ink display that
-shows photos, quotes, and ambient information tiles. Refreshes once per hour.
+shows photos, quotes, and ambient information tiles. It follows a daily
+schedule: local motivation at 6am, Bangalore weather from 7–9am, then uploaded
+tiles with hourly server checks through the 10pm check.
 
 ## Architecture
 

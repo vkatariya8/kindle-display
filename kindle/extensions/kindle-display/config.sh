@@ -14,8 +14,11 @@ LOG_FILE="/mnt/us/kindle-display.log"
 SS_DIR="/mnt/us/linkss/screensavers"
 SS_FILES="bg_xsmall_ss00.png bg_xsmall_ss01.png"
 
-# How often the background loop fetches. 3600 = 1 hour, 1800 = 30 min, 120 = 2 min.
-REFRESH_SECONDS=1800
+# The regular uploaded-image check runs hourly from 09:00 through 21:00.
+# This is also the interval used for the weather window; the script aligns
+# wakeups to the top of each hour so the 06:00, 07:00, and 09:00 transitions
+# happen on time.
+REFRESH_SECONDS=3600
 
 # How long to wait for Wi-Fi to associate before giving up.
 WIFI_TIMEOUT_SECONDS=30

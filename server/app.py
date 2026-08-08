@@ -6,13 +6,14 @@ from email.utils import formatdate, parsedate_to_datetime
 from pathlib import Path
 
 from flask import Flask, abort, jsonify, redirect, render_template, request, send_file, url_for
-
 from PIL import Image, ImageDraw, ImageFont
+import requests
 
 from render.image import render_photo
 from render.text import render_quote
 from render.unsplash import fetch_photo
 from render.smart_bg import render_quote_on_background
+from render.weather import render_weather
 
 SERVER_DIR = Path(__file__).resolve().parent
 # TILES_DIR is configurable so Railway can point it at a persistent volume.
@@ -28,10 +29,22 @@ UPLOAD_TOKEN = os.environ.get("UPLOAD_TOKEN")
 ALLOWED_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
 
 LOWBATT_PATH = TILES_DIR / "current-lowbatt.png"
+WEATHER_PATH = TILES_DIR / "weather.png"
 FONT_DIR = SERVER_DIR / "fonts"
 LOWBATT_FONT = FONT_DIR / "EBGaramond-Italic.ttf"
 
 app = Flask(__name__)
+
+_BANGALORE_FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
+_BANGALORE_FORECAST_PARAMS = {
+    "latitude": 12.9716,
+    "longitude": 77.5946,
+    "daily": "temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max",
+    "temperature_unit": "celsius",
+    "wind_speed_unit": "kmh",
+    "timezone": "Asia/Kolkata",
+    "forecast_days": 1,
+}
 
 
 def _etag(path: Path) -> str:
@@ -142,6 +155,38 @@ def current_lowbatt_png():
     resp.headers["ETag"] = etag
     resp.headers["Cache-Control"] = "no-cache"
     return resp
+
+
+@app.get("/weather.png")
+def weather_png():
+    """Return today's Bangalore forecast as a Kindle-ready image.
+
+    The Kindle only consumes PNGs, so the server fetches and renders the
+    forecast rather than asking the device to parse JSON.
+    """
+    try:
+        response = requests.get(
+            _BANGALORE_FORECAST_URL,
+            params=_BANGALORE_FORECAST_PARAMS,
+            timeout=15,
+        )
+        response.raise_for_status()
+        daily = response.json()["daily"]
+        forecast = {
+            "date": daily["time"][0],
+            "max_temp": float(daily["temperature_2m_max"][0]),
+            "min_temp": float(daily["temperature_2m_min"][0]),
+            "max_wind": float(daily["wind_speed_10m_max"][0]),
+            "rain_chance": float(daily["precipitation_probability_max"][0]),
+        }
+        render_weather(forecast, WEATHER_PATH)
+    except (KeyError, IndexError, TypeError, ValueError, requests.RequestException):
+        # A cached result is better than a blank Kindle screen if the forecast
+        # provider is temporarily unavailable.
+        if not WEATHER_PATH.exists():
+            abort(503, "weather forecast unavailable")
+
+    return send_file(WEATHER_PATH, mimetype="image/png", conditional=False)
 
 
 @app.get("/health")

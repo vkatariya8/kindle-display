@@ -10,14 +10,23 @@
 HERE="$(dirname "$0")"
 . "$HERE/_common.sh"
 
-log wake "listener up, PID $$, will arm rtcWakeup=${REFRESH_SECONDS}s on each readyToSuspend"
+WAKE_INTERVAL_FILE="$TILE_DIR/next-wake-seconds"
+log wake "listener up, PID $$"
 
 # -m: stay alive across multiple events. Output one line per event so we
 # can react each time. We ignore the actual line content; the act of
 # receiving the line is the trigger.
 lipc-wait-event -m com.lab126.powerd readyToSuspend 2>>"$LOG_FILE" | while IFS= read -r _; do
-  if lipc-set-prop -i com.lab126.powerd rtcWakeup "$REFRESH_SECONDS" 2>>"$LOG_FILE"; then
-    log wake "rtcWakeup armed for +${REFRESH_SECONDS}s"
+  WAKE_SECONDS="$REFRESH_SECONDS"
+  if [ -f "$WAKE_INTERVAL_FILE" ]; then
+    CANDIDATE=$(cat "$WAKE_INTERVAL_FILE" 2>/dev/null)
+    case "$CANDIDATE" in
+      ''|*[!0-9]*) ;;
+      *) WAKE_SECONDS="$CANDIDATE" ;;
+    esac
+  fi
+  if lipc-set-prop -i com.lab126.powerd rtcWakeup "$WAKE_SECONDS" 2>>"$LOG_FILE"; then
+    log wake "rtcWakeup armed for +${WAKE_SECONDS}s"
   else
     log wake "rtcWakeup rejected (state changed between event and write?)"
   fi

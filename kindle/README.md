@@ -26,7 +26,19 @@ No SSH required.
    ```
 4. Eject the Kindle and unplug.
 5. Open KUAL on the Kindle. You should see a new entry **kindle-display** with
-   four items: Refresh now, Start hourly loop, Stop hourly loop, Show log.
+   Refresh now, Start hourly loop, Stop hourly loop, and Show log.
+
+## Daily schedule
+
+- **06:00–06:59:** one of seven bundled motivational tiles, rotated daily. This
+  does not enable Wi-Fi.
+- **07:00–08:59:** Bangalore's forecast for the day: high, low, maximum wind,
+  and maximum chance of rain.
+- **09:00–22:59:** the last uploaded image. The Kindle checks the server at the
+  top of every hour, including the final check at 22:00, and updates only if it
+  has changed.
+- **23:00–05:59:** no network activity; the last displayed tile remains on
+  screen until the morning message.
 
 ## First-run checklist
 

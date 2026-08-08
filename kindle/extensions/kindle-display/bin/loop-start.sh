@@ -1,5 +1,6 @@
 #!/bin/sh
-# Start a background loop that fetches every $REFRESH_SECONDS.
+# Start a background loop. fetch-and-show.sh selects the next wake time from
+# the daily schedule and records it for the RTC wake listener.
 # Writes its PID to $TILE_DIR/loop.pid for loop-stop.sh.
 # Survives this shell exiting (nohup), but does NOT survive reboot —
 # rerun this entry from KUAL after a power cycle.
@@ -27,10 +28,9 @@ log loop "wake-listener PID $(cat "$WAKE_PIDFILE")"
 # We embed the fetch path with absolute reference because nohup loses cwd.
 FETCH="$HERE/fetch-and-show.sh"
 
-# Cadence is driven by the RTC wakealarm armed inside fetch-and-show.sh —
-# the device suspends after each fetch and wakes itself $REFRESH_SECONDS
-# later. The userspace `sleep` here is just a safety floor so we don't
-# busy-loop in the (logged) case where arming the wakealarm fails.
+# Cadence is driven by the RTC wakealarm armed from the schedule in
+# fetch-and-show.sh. The userspace `sleep` here is just a safety floor so we
+# don't busy-loop in the (logged) case where arming the wakealarm fails.
 TICK=60
 
 # BusyBox sh doesn't ship nohup, but the trailing `&` plus stdin/out/err
@@ -59,4 +59,4 @@ sh -c "
 " >>"$LOG_FILE" 2>&1 &
 
 echo $! > "$PIDFILE"
-log loop "started, PID $(cat "$PIDFILE"), tick ${TICK}s, wake every ${REFRESH_SECONDS}s"
+log loop "started, PID $(cat "$PIDFILE"), tick ${TICK}s"

@@ -1,15 +1,44 @@
 #!/bin/sh
-# The loop body. One shot: wifi on -> conditional GET -> /usr/sbin/eips -> wifi off.
-# Safe to run as often as you like; uses If-Modified-Since to avoid re-downloads.
+# The loop body. It selects a tile based on the local clock:
+# 06:00–06:59 a bundled motivational tile; 07:00–08:59 Bangalore weather;
+# 09:00–22:59 the uploaded image. Overnight it leaves the current image alone.
 
 HERE="$(dirname "$0")"
 . "$HERE/_common.sh"
 
 CURRENT="$TILE_DIR/current.png"
 TMP="$TILE_DIR/.current.png.tmp"
+WEATHER_CURRENT="$TILE_DIR/weather.png"
+WEATHER_TMP="$TILE_DIR/.weather.png.tmp"
 LOWBATT_STOP="$TILE_DIR/lowbatt_stop"
+MOTIVATION_DIR="$HERE/../tiles"
 
 log fetch "begin"
+
+# Kindle time is configured locally. Strip a leading zero without relying on
+# non-POSIX arithmetic so this remains compatible with BusyBox ash.
+HOUR_RAW=$(date +%H 2>/dev/null)
+MINUTE_RAW=$(date +%M 2>/dev/null)
+HOUR=$(expr "$HOUR_RAW" + 0 2>/dev/null || echo 0)
+MINUTE=$(expr "$MINUTE_RAW" + 0 2>/dev/null || echo 0)
+
+# Sleep until the next hour boundary. After the 22:00 check we sleep through
+# the night and let the 06:00 motivational window start the next day.
+if [ "$HOUR" -gt 22 ] || [ "$HOUR" -lt 6 ]; then
+  HOURS_TO_SIX=$(( (30 - HOUR) % 24 ))
+  NEXT_WAKE_SECONDS=$(( HOURS_TO_SIX * 3600 - MINUTE * 60 ))
+else
+  NEXT_WAKE_SECONDS=$(( 3600 - MINUTE * 60 ))
+fi
+[ "$NEXT_WAKE_SECONDS" -le 0 ] && NEXT_WAKE_SECONDS=60
+
+# Give the persistent RTC listener the actual next transition rather than a
+# fixed cadence. The listener is a separate process, so use a tiny state file
+# instead of relying on shell-variable inheritance.
+WAKE_INTERVAL_FILE="$TILE_DIR/next-wake-seconds"
+echo "$NEXT_WAKE_SECONDS" > "$WAKE_INTERVAL_FILE"
+REFRESH_SECONDS="$NEXT_WAKE_SECONDS"
+log fetch "time=${HOUR_RAW}:${MINUTE_RAW}, next wake in ${REFRESH_SECONDS}s"
 
 # Check battery before doing anything expensive.
 BATT=$(lipc-get-prop com.lab126.powerd battLevel 2>/dev/null || echo 100)
@@ -38,6 +67,61 @@ if [ "$BATT" -le "$LOWBATT_THRESHOLD" ]; then
   exit 0
 fi
 
+# publish_screensaver: copy its image into linkss's screensaver folder,
+# overwriting both default slots so the hack's random picker always lands on it.
+publish_screensaver() {
+  DISPLAY_IMAGE="$1"
+  if [ ! -f "$DISPLAY_IMAGE" ]; then
+    log fetch "display image missing: $DISPLAY_IMAGE"
+    return
+  fi
+  if [ ! -d "$SS_DIR" ]; then
+    log fetch "screensaver dir $SS_DIR missing, falling back to eips"
+    /usr/sbin/eips -g "$DISPLAY_IMAGE" >>"$LOG_FILE" 2>&1
+    return
+  fi
+  for f in $SS_FILES; do
+    cp "$DISPLAY_IMAGE" "$SS_DIR/$f" 2>>"$LOG_FILE"
+  done
+  log fetch "screensavers updated"
+
+  state_now=$(lipc-get-prop com.lab126.powerd state 2>/dev/null)
+  case "$state_now" in
+    screenSaver|readyToSuspend)
+      /usr/sbin/eips -f -g "$DISPLAY_IMAGE" >>"$LOG_FILE" 2>&1
+      log fetch "eips repaint (state=$state_now)"
+      ;;
+  esac
+  awake=$(lipc-get-prop com.lab126.powerd state 2>/dev/null)
+  log fetch "powerd.state=$awake"
+  lipc-set-prop -i com.lab126.powerd rtcWakeup "$REFRESH_SECONDS" 2>/dev/null \
+    && log fetch "rtcWakeup armed for +${REFRESH_SECONDS}s (direct)"
+  if [ "$awake" = "active" ]; then
+    lipc-set-prop com.lab126.powerd powerButton 1 2>>"$LOG_FILE"
+    log fetch "powerButton 1 sent (sleep)"
+  fi
+}
+
+# 06:00–06:59: show one of seven pre-rendered local tiles. %j is POSIX and
+# changes the selected tile daily without a network request.
+if [ "$HOUR" -eq 6 ]; then
+  DAY_OF_YEAR=$(date +%j 2>/dev/null)
+  TILE_INDEX=$(expr "$DAY_OF_YEAR" % 7 + 1 2>/dev/null || echo 1)
+  MOTIVATION_TILE="$MOTIVATION_DIR/motivation-${TILE_INDEX}.png"
+  log fetch "morning motivation tile=$TILE_INDEX"
+  publish_screensaver "$MOTIVATION_TILE"
+  log fetch "done"
+  exit 0
+fi
+
+# 23:00–05:59: preserve the last visible tile and do not spend battery on Wi-Fi.
+# The 22:00 hourly uploaded-image check is the last network request of the day.
+if [ "$HOUR" -gt 22 ] || [ "$HOUR" -lt 6 ]; then
+  log fetch "overnight quiet period; keeping current display"
+  log fetch "done"
+  exit 0
+fi
+
 # Wi-Fi up. If it fails, redisplay whatever we have and bail — the wall keeps
 # showing the last good image rather than going blank.
 if ! "$HERE/wifi-on.sh"; then
@@ -46,21 +130,30 @@ if ! "$HERE/wifi-on.sh"; then
   exit 1
 fi
 
-# curl -z compares the SERVER's Last-Modified to the local file's mtime.
-# If unchanged, server returns 304 and curl writes nothing to $TMP.
-# --max-time bounds the whole transfer so a hung server can't hang our loop.
-# -k: skip TLS cert verification. The Kindle Touch ships a ~2013 CA bundle
-# that doesn't include modern Let's Encrypt roots, so PythonAnywhere's cert
-# fails to validate. The connection is still encrypted; only identity check
-# is skipped. Threat model = "someone on home wifi swaps the wallpaper" —
-# acceptable for v0. Upload endpoint is still token-protected.
-HTTP=$(curl -sS -L -k \
-  -o "$TMP" \
-  -w "%{http_code}" \
-  -z "$CURRENT" \
-  --connect-timeout 10 \
-  --max-time 60 \
-  "$SERVER_URL/current.png" 2>>"$LOG_FILE") || HTTP="000"
+# During the 07:00–08:59 window, use the server-rendered Bangalore forecast.
+# No JSON parsing or weather rendering happens on the Kindle.
+if [ "$HOUR" -ge 7 ] && [ "$HOUR" -lt 9 ]; then
+  FETCHED_IMAGE="$WEATHER_CURRENT"
+  TMP="$WEATHER_TMP"
+  HTTP=$(curl -sS -L -k \
+    -o "$TMP" \
+    -w "%{http_code}" \
+    --connect-timeout 10 \
+    --max-time 60 \
+    "$SERVER_URL/weather.png" 2>>"$LOG_FILE") || HTTP="000"
+else
+  FETCHED_IMAGE="$CURRENT"
+  # curl -z compares the server's Last-Modified to the local file's mtime.
+  # If unchanged, it returns 304 and writes nothing to $TMP. -k is necessary
+  # because this Kindle's CA bundle predates the server certificate chain.
+  HTTP=$(curl -sS -L -k \
+    -o "$TMP" \
+    -w "%{http_code}" \
+    -z "$CURRENT" \
+    --connect-timeout 10 \
+    --max-time 60 \
+    "$SERVER_URL/current.png" 2>>"$LOG_FILE") || HTTP="000"
+fi
 
 log fetch "GET -> $HTTP"
 
@@ -74,68 +167,21 @@ log fetch "GET -> $HTTP"
 # (works only when powerd is already in ReadyToSuspend, which is rare from
 # inside a fetch but harmless to try).
 
-# publish_screensaver: copy $CURRENT into linkss's screensaver folder,
-# overwriting BOTH default slots so the hack's random picker always lands
-# on our image. Then nudge the device into screensaver mode so it repaints.
-publish_screensaver() {
-  if [ ! -d "$SS_DIR" ]; then
-    log fetch "screensaver dir $SS_DIR missing, falling back to eips"
-    /usr/sbin/eips -g "$CURRENT" >>"$LOG_FILE" 2>&1
-    return
-  fi
-  for f in $SS_FILES; do
-    cp "$CURRENT" "$SS_DIR/$f" 2>>"$LOG_FILE"
-  done
-  log fetch "screensavers updated"
-
-  # If the device is already in screensaver mode, the linkss hack won't
-  # repaint just because we swapped the PNG underneath it (it picks an
-  # image only on entry into screensaver). Force an immediate repaint via
-  # eips. Safe in screenSaver/readyToSuspend states; we skip it when active
-  # so we don't fight the framework UI.
-  state_now=$(lipc-get-prop com.lab126.powerd state 2>/dev/null)
-  case "$state_now" in
-    screenSaver|readyToSuspend)
-      /usr/sbin/eips -f -g "$CURRENT" >>"$LOG_FILE" 2>&1
-      log fetch "eips repaint (state=$state_now)"
-      ;;
-  esac
-  # Sleep the device. powerButton 1 simulates a physical power-button press,
-  # which is the reliable way to enter screensaver mode on Touch 5.3.x.
-  # (lipc com.lab126.powerd.toScreenSaver was a no-op on this firmware.)
-  # If the device is already asleep, this would WAKE it — that's why we only
-  # call it when we have a fresh image worth showing.
-  awake=$(lipc-get-prop com.lab126.powerd state 2>/dev/null)
-  log fetch "powerd.state=$awake"
-
-  # Best-effort early arm. The persistent wake-listener will catch any
-  # readyToSuspend event afterwards regardless.
-  lipc-set-prop -i com.lab126.powerd rtcWakeup "$REFRESH_SECONDS" 2>/dev/null \
-    && log fetch "rtcWakeup armed for +${REFRESH_SECONDS}s (direct)"
-
-  # powerButton 1 is a TOGGLE — it sleeps an active device, but wakes a
-  # sleeping one. Only press it when the device is fully active.
-  if [ "$awake" = "active" ]; then
-    lipc-set-prop com.lab126.powerd powerButton 1 2>>"$LOG_FILE"
-    log fetch "powerButton 1 sent (sleep)"
-  fi
-}
-
 case "$HTTP" in
   200)
     # New image. Atomic replace so a half-downloaded file can never display.
-    mv "$TMP" "$CURRENT"
-    BYTES=$(wc -c < "$CURRENT" | tr -d ' ')
+    mv "$TMP" "$FETCHED_IMAGE"
+    BYTES=$(wc -c < "$FETCHED_IMAGE" | tr -d ' ')
     log fetch "new image, $BYTES bytes"
-    publish_screensaver
+    publish_screensaver "$FETCHED_IMAGE"
     ;;
   304)
     # Same image server-side. Re-publish anyway in case the user woke the
     # device and we want to send it back to the screensaver.
     rm -f "$TMP"
-    if [ -f "$CURRENT" ]; then
+    if [ -f "$FETCHED_IMAGE" ]; then
       log fetch "304, re-publishing cached"
-      publish_screensaver
+      publish_screensaver "$FETCHED_IMAGE"
     else
       log fetch "304 but no cached file (shouldn't happen)"
     fi
